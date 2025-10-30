@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart GST Billing System</title>
+  <style>
+    
+    body {
+      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: #f4f7fb;
+      margin: 0;
+      padding: 30px;
+      color: #222;
+    }
+    .card {
+      max-width: 980px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 6px 24px rgba(34, 60, 80, 0.08);
+      padding: 22px;
+    }
+    .header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-bottom:18px;
+    }
+    h1 { margin:0; font-size:20px; color:#0b5ed7;}
+    .inputs { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .field {
+      display:flex; flex-direction:column; flex:1; min-width:160px;
+    }
+    label { font-size:13px; color:#555; margin-bottom:6px; }
+    input[type="text"], input[type="number"], select {
+      padding:10px 12px;
+      border:1px solid #d7ddef;
+      border-radius:6px;
+      font-size:14px;
+      outline: none;
+      background:#fff;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .controls { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
+    button {
+      background:#0b5ed7; color:#fff; border:none; padding:10px 14px; border-radius:6px; cursor:pointer; font-weight:600;
+    }
+    button.secondary { background:#6c757d; }
+    .note { font-size:13px; color:#666; margin-bottom:6px; }
+
+    table {
+      width:100%; border-collapse:collapse; margin-top:12px;
+    }
+    th, td {
+      padding:10px 8px; text-align:center; border-bottom:1px solid #eef2f7; font-size:14px;
+    }
+    th { background:#f8fbff; color:#0b5ed7; font-weight:700; }
+    td.left { text-align:left; }
+    .totals {
+      display:flex; justify-content:flex-end; gap:22px; margin-top:14px; flex-wrap:wrap;
+    }
+    .tot-card {
+      background:#f8faff; padding:10px 14px; border-radius:8px; border:1px solid #e6f0ff; min-width:180px;
+    }
+    .tot-card b { display:block; font-size:16px; color:#0b5ed7; }
+    .muted { color:#666; font-size:13px; }
+
+    .small-btn {
+      background:#fff; border:1px solid #e1e6ef; color:#0b5ed7; padding:6px 8px; border-radius:6px; cursor:pointer;
+    }
+    .delete-btn { background:#ff4d4f; color:#fff; border:none; padding:6px 8px; border-radius:6px; cursor:pointer; }
+    .edit-btn { background:#ffd43b; border:none; color:#222; padding:6px 8px; border-radius:6px; cursor:pointer; }
+
+    @media (max-width:760px) {
+      .inputs { flex-direction:column; }
+      .controls { flex-direction:column; align-items:stretch; }
+      .totals { justify-content:stretch; }
+    }
+
+    
+    @media print {
+      body * { visibility: hidden; }
+      #invoicePrintArea, #invoicePrintArea * { visibility: visible; }
+      #invoicePrintArea { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
+      
+      #invoicePrintArea table { width: 100%; border-collapse: collapse; }
+      #invoicePrintArea th, #invoicePrintArea td { border: 1px solid #222; padding:8px; }
+      #invoicePrintArea th { background: #f0f0f0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card" id="appArea">
+    <div class="header">
+      <div>
+        <h1>Smart GST Billing System</h1>
+        <div class="muted">Auto-detection of category & GST based on product name keywords</div>
+      </div>
+      <div class="muted">Date: <span id="billDate"></span></div>
+    </div>
+
+    
+    <div class="inputs">
+      <div class="field">
+        <label>Product Name</label>
+        <input type="text" id="productName" placeholder="Enter Product Name" />
+      </div>
+      <div class="field">
+        <label>Quantity</label>
+        <input type="number" id="quantity" placeholder="e.g., 2" min="1" value="1" />
+      </div>
+      <div class="field">
+        <label>Price per Unit (₹)</label>
+        <input type="number" id="price" placeholder="Enter Price" min="0" step="0.01" />
+      </div>
+      <div class="field">
+        <label>Detected Category</label>
+        <input type="text" id="detectedCategory" readonly placeholder="Auto-detected" />
+      </div>
+      <div class="field">
+        <label>GST (%)</label>
+        <input type="text" id="detectedGST" readonly placeholder="Auto" />
+      </div>
+    </div>
+
+    <div class="controls">
+      <div style="flex:1">
+        <!-- Add behaves as Add or Save depending on edit state -->
+        <button id="addBtn">➕ Add Item</button>
+        <button class="secondary" id="clearBtn">Clear Inputs</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="small-btn" id="exportJson">Export JSON</button>
+        <button class="small-btn" id="resetAll">Reset Bill</button>
+        <button class="small-btn" id="printBtn">🖨️ Print Bill</button>
+      </div>
+    </div>
+
+    <div class="note">Tip: Type product name naturally (e.g., "rice", "shampoo", "mobile charger"). The system uses keywords to detect category and GST.</div>
+
+    
+    <table id="itemsTable" aria-label="Bill items">
+      <thead>
+        <tr>
+          <th>S.No</th>
+          <th class="left">Product Name</th>
+          <th>Category</th>
+          <th>Price/Unit (₹)</th>
+          <th>Qty</th>
+          <th>GST %</th>
+          <th>GST Amount (₹)</th>
+          <th>Total (₹)</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="itemsBody">
+        <tr><td colspan="9" class="muted">No items added yet.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="totals" id="totalsArea" style="display:none;">
+      <div class="tot-card">
+        <div class="muted">Subtotal (Before GST)</div>
+        <b id="subtotal">₹0.00</b>
+      </div>
+      <div class="tot-card">
+        <div class="muted">Total GST</div>
+        <b id="totalGST">₹0.00</b>
+      </div>
+      <div class="tot-card">
+        <div class="muted">Grand Total (Incl. GST)</div>
+        <b id="grandTotal">₹0.00</b>
+      </div>
+    </div>
+  </div>
+
+ 
+  <div id="invoicePrintArea" style="display:none;"></div>
+
+<script>
+
+const categoryMap = [
+  { cat: "Groceries & Staples", gst: 5, keywords: ["rice","wheat","atta","dal","pulse","sugar","salt","oil"] },
+  { cat: "Packaged Foods", gst: 12, keywords: ["chips","biscuits","noodles","instant","pasta","oreo","maggi","cookies"] },
+  { cat: "Beverages", gst: 18, keywords: ["juice","soft drink","cola","soda","energy drink","tea","coffee"] },
+  { cat: "Dairy Products", gst: 5, keywords: ["milk","butter","cheese","curd","paneer","ghee","milk powder"] },
+  { cat: "Bakery Items", gst: 5, keywords: ["bread","cake","pastry","bun"] },
+  { cat: "Fruits & Vegetables", gst: 0, keywords: ["apple","banana","tomato","potato","onion","vegetable","fruit"] },
+  { cat: "Personal Care", gst: 18, keywords: ["soap","shampoo","toothpaste","toothbrush","deodorant","razor","toothpaste"] },
+  { cat: "Household Cleaning", gst: 18, keywords: ["detergent","floor cleaner","bleach","liquid wash","dishwash","cleaner"] },
+  { cat: "Electronics", gst: 18, keywords: ["mobile","charger","earphone","tv","television","fan","microwave","mixer","fridge","appliance","iron","speaker"] },
+  { cat: "Stationery", gst: 12, keywords: ["pen","notebook","file","paper","pencil","eraser","marker","diary","book"] },
+  { cat: "Clothing", gst: 5, keywords: ["shirt","t-shirt","saree","kurta","jeans","dress","trouser","kurti"] },
+  { cat: "Footwear", gst: 5, keywords: ["shoe","slipper","sandal","boot"] },
+  { cat: "Toys & Games", gst: 12, keywords: ["toy","puzzle","game","lego","doll"] },
+  { cat: "Cosmetics", gst: 18, keywords: ["lipstick","cream","foundation","perfume","cosmetic","makeup"] },
+  { cat: "Furniture", gst: 18, keywords: ["chair","table","sofa","bed","wardrobe"] },
+  { cat: "Home Appliances", gst: 18, keywords: ["ac","air conditioner","oven","geyser","mixer","grinder","heater"] },
+  { cat: "Medicines & Healthcare", gst: 5, keywords: ["paracetamol","tablet","syrup","ointment","medicine","capsule","tablet"] },
+  { cat: "Jewellery", gst: 3, keywords: ["gold","silver","necklace","ring","bangles","jewellery"] },
+];
+
+
+function setDate() {
+  const d = new Date();
+  document.getElementById("billDate").innerText = d.toLocaleString();
+}
+setDate();
+
+function findCategoryAndGST(productName) {
+  if (!productName) return { cat: "Others", gst: 18 };
+  const name = productName.toLowerCase();
+  for (let entry of categoryMap) {
+    for (let kw of entry.keywords) {
+      if (!kw) continue;
+      if (name.includes(kw)) return { cat: entry.cat, gst: entry.gst };
+    }
+  }
+  return { cat: "Others", gst: 18 };
+}
+
+
+let items = []; 
+let editingId = null;
+
+
+const productNameEl = document.getElementById("productName");
+const quantityEl = document.getElementById("quantity");
+const priceEl = document.getElementById("price");
+const detectedCatEl = document.getElementById("detectedCategory");
+const detectedGstEl = document.getElementById("detectedGST");
+const addBtn = document.getElementById("addBtn");
+const clearBtn = document.getElementById("clearBtn");
+const itemsBody = document.getElementById("itemsBody");
+const totalsArea = document.getElementById("totalsArea");
+const subtotalEl = document.getElementById("subtotal");
+const totalGSTEl = document.getElementById("totalGST");
+const grandTotalEl = document.getElementById("grandTotal");
+const exportJsonBtn = document.getElementById("exportJson");
+const resetAllBtn = document.getElementById("resetAll");
+const printBtn = document.getElementById("printBtn");
+const invoicePrintArea = document.getElementById("invoicePrintArea");
+
+
+productNameEl.addEventListener("input", () => {
+  const info = findCategoryAndGST(productNameEl.value.trim());
+  detectedCatEl.value = info.cat;
+  detectedGstEl.value = info.gst + " %";
+});
+
+
+clearBtn.addEventListener("click", clearInputs);
+function clearInputs() {
+  editingId = null;
+  addBtn.innerText = "➕ Add Item";
+  productNameEl.value = "";
+  quantityEl.value = 1;
+  priceEl.value = "";
+  detectedCatEl.value = "";
+  detectedGstEl.value = "";
+  productNameEl.focus();
+}
+
+
+addBtn.addEventListener("click", () => {
+  const name = productNameEl.value.trim();
+  const qty = parseFloat(quantityEl.value);
+  const price = parseFloat(priceEl.value);
+
+  if (!name) { alert("Enter product name"); productNameEl.focus(); return; }
+  if (!qty || qty <= 0) { alert("Enter valid quantity"); quantityEl.focus(); return; }
+  if (isNaN(price) || price < 0) { alert("Enter valid price"); priceEl.focus(); return; }
+
+  const info = findCategoryAndGST(name);
+  const gstRate = info.gst;
+  const category = info.cat;
+
+  const subtotal = +(price * qty);
+  const gstAmount = +(subtotal * gstRate / 100);
+  const total = +(subtotal + gstAmount);
+
+  if (editingId) {
+    const idx = items.findIndex(i => i.id === editingId);
+    if (idx !== -1) {
+      items[idx] = { id: editingId, name, qty, price, category, gstRate, gstAmount, subtotal, total };
+    }
+    editingId = null;
+    addBtn.innerText = "➕ Add Item";
+  } else {
+    const id = Date.now() + Math.floor(Math.random()*1000);
+    items.push({ id, name, qty, price, category, gstRate, gstAmount, subtotal, total });
+  }
+
+  renderItemsTable();
+  clearInputs();
+});
+
+
+function renderItemsTable() {
+  itemsBody.innerHTML = "";
+  if (items.length === 0) {
+    itemsBody.innerHTML = '<tr><td colspan="9" class="muted">No items added yet.</td></tr>';
+    totalsArea.style.display = "none";
+    return;
+  }
+
+  let sn = 1;
+  let subtotalAll = 0;
+  let gstAll = 0;
+  let grandAll = 0;
+
+  for (let it of items) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${sn++}</td>
+      <td class="left">${escapeHtml(it.name)}</td>
+      <td>${it.category}</td>
+      <td>₹${it.price.toFixed(2)}</td>
+      <td>${it.qty}</td>
+      <td>${it.gstRate}%</td>
+      <td>₹${it.gstAmount.toFixed(2)}</td>
+      <td>₹${it.total.toFixed(2)}</td>
+      <td>
+        <button class="edit-btn" data-id="${it.id}">✏️ Edit</button>
+        <button class="delete-btn" data-id="${it.id}">Delete</button>
+      </td>
+    `;
+    itemsBody.appendChild(row);
+    subtotalAll += it.subtotal;
+    gstAll += it.gstAmount;
+    grandAll += it.total;
+  }
+
+ 
+  const totalRow = document.createElement("tr");
+  totalRow.innerHTML = `
+    <td colspan="4" style="text-align:left; font-weight:700; background:#f6f9ff;">Summary</td>
+    <td colspan="2" style="background:#f6f9ff;"></td>
+    <td style="background:#f6f9ff;">₹${gstAll.toFixed(2)}</td>
+    <td style="background:#f6f9ff;">₹${grandAll.toFixed(2)}</td>
+    <td style="background:#f6f9ff;"></td>
+  `;
+  itemsBody.appendChild(totalRow);
+
+  totalsArea.style.display = "flex";
+  subtotalEl.innerText = `₹${subtotalAll.toFixed(2)}`;
+  totalGSTEl.innerText = `₹${gstAll.toFixed(2)}`;
+  grandTotalEl.innerText = `₹${grandAll.toFixed(2)}`;
+
+
+  document.querySelectorAll(".delete-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const id = +e.target.getAttribute("data-id");
+      items = items.filter(x => x.id !== id);
+      renderItemsTable();
+    });
+  });
+  document.querySelectorAll(".edit-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const id = +e.target.getAttribute("data-id");
+      const it = items.find(x => x.id === id);
+      if (!it) return;
+      editingId = it.id;
+      productNameEl.value = it.name;
+      quantityEl.value = it.qty;
+      priceEl.value = it.price;
+      detectedCatEl.value = it.category;
+      detectedGstEl.value = it.gstRate + " %";
+      addBtn.innerText = "💾 Save";
+      productNameEl.focus();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+}
+
+
+exportJsonBtn.addEventListener("click", () => {
+  if (items.length === 0) { alert("No items to export"); return; }
+  const payload = {
+    date: new Date().toISOString(),
+    items,
+    subtotal: subtotalEl.innerText,
+    totalGST: totalGSTEl.innerText,
+    grandTotal: grandTotalEl.innerText
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "bill.json"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+
+resetAllBtn.addEventListener("click", () => {
+  if (!confirm("Reset entire bill and remove all items?")) return;
+  items = [];
+  renderItemsTable();
+});
+
+
+printBtn.addEventListener("click", () => {
+  if (items.length === 0) { alert("Add items before printing the bill."); return; }
+
+  
+  const billNumber = 'BILL-' + new Date().getTime().toString().slice(-6);
+
+  
+  const d = new Date();
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif; color:#000;">
+      <h2 style="margin:0; color:#0b5ed7;">Smart GST Billing System</h2>
+      <div style="margin-top:6px; margin-bottom:14px; font-size:14px;">
+        <div>Bill No: <strong>${billNumber}</strong></div>
+        <div>Date: <strong>${d.toLocaleString()}</strong></div>
+      </div>
+
+      <table style="width:100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="padding:6px; text-align:left;">S.No</th>
+            <th style="padding:6px; text-align:left;">Product</th>
+            <th style="padding:6px; text-align:left;">Category</th>
+            <th style="padding:6px; text-align:right;">Price/Unit (₹)</th>
+            <th style="padding:6px; text-align:right;">Qty</th>
+            <th style="padding:6px; text-align:right;">GST %</th>
+            <th style="padding:6px; text-align:right;">GST Amount (₹)</th>
+            <th style="padding:6px; text-align:right;">Total (₹)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((it, idx) => `
+            <tr>
+              <td style="padding:6px; text-align:left;">${idx+1}</td>
+              <td style="padding:6px; text-align:left;">${escapeHtml(it.name)}</td>
+              <td style="padding:6px; text-align:left;">${it.category}</td>
+              <td style="padding:6px; text-align:right;">${it.price.toFixed(2)}</td>
+              <td style="padding:6px; text-align:right;">${it.qty}</td>
+              <td style="padding:6px; text-align:right;">${it.gstRate}%</td>
+              <td style="padding:6px; text-align:right;">${it.gstAmount.toFixed(2)}</td>
+              <td style="padding:6px; text-align:right;">${it.total.toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div style="margin-top:12px; display:flex; justify-content:flex-end;">
+        <table style="width:360px; border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px; border-top:1px solid #000;">Subtotal (Before GST)</td>
+            <td style="padding:6px; border-top:1px solid #000; text-align:right;">${subtotalEl.innerText.replace('₹','')}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px;">Total GST</td>
+            <td style="padding:6px; text-align:right;">${totalGSTEl.innerText.replace('₹','')}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px; font-weight:bold; border-top:1px solid #000;">Grand Total (Incl. GST)</td>
+            <td style="padding:6px; font-weight:bold; border-top:1px solid #000; text-align:right;">${grandTotalEl.innerText.replace('₹','')}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin-top:20px; font-size:12px; color:#333;">
+        <div>Thank you for shopping with Smart GST Billing System.</div>
+      </div>
+    </div>
+  `;
+
+  
+  invoicePrintArea.innerHTML = html;
+  invoicePrintArea.style.display = 'block';
+
+  
+  setTimeout(() => {
+    window.print();
+    
+    invoicePrintArea.style.display = 'none';
+  }, 300);
+});
+
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
+
+renderItemsTable();
+
+</script>
+</body>
+</html>
